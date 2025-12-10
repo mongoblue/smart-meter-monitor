@@ -1,0 +1,81 @@
+// reset.less
+// 纯静态版，无需再 import 其他文件
+
+// 1. 盒模型初始化 (最重要)
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+// 2. 基础 HTML 标签重置
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB",
+               "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+  line-height: 1.5;
+  color: #303133;          // 原 @text-main
+  background-color: #f5f5f5; // 原 @bg-color-page
+  font-size: 14px;         // 原 @font-size-base
+}
+
+// 3. 去除列表默认样式
+ul, ol, li {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+// 4. 链接样式
+a {
+  text-decoration: none;
+  color: inherit;
+  transition: color 0.3s;
+
+  &:hover {
+    color: #409eff;   // 原 @primary-color
+  }
+
+  &:focus, &:active {
+    outline: none;
+  }
+}
+
+// 5. 图片自适应
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+// 6. 表单元素重置
+input, button, textarea, select {
+  font: inherit;
+  outline: none;
+  border: none;
+}
+
+button {
+  cursor: pointer;
+  background: transparent;
+}
+
+// 7. 自定义滚动条
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
