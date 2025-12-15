@@ -277,7 +277,7 @@ class UserUsageView(ListAPIView):
                 "year": item.year,
                 "month": item.month,
                 "kwh": float(item.kwh),
-                "money": float(item.kwh) * 1.5
+                "money": float(item.kwh) * 0.65
             })
 
         return Response(result)

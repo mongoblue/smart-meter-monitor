@@ -7,7 +7,7 @@ const router = useRouter()
 const bills = ref([]);
 async function loadData() {
   const resp = await service.get("/power/bill/");
-  bills.value = resp.bills || [];
+  bills.value = resp.bills;
 }
 
 function viewDetail() {
@@ -20,8 +20,7 @@ onMounted(loadData);
 <template>
   <div class="page">
     <h2>历史账单</h2>
-
-    <el-table :data="bills" border style="width: 100%">
+    <el-table :data="bills" style="width: 100%">
       <el-table-column label="月份" width="140">
         <template #default="{ row }">
           {{ row.year }}-{{ String(row.month).padStart(2, "0") }}

@@ -24,7 +24,7 @@ const pwdForm = reactive({
 
 onMounted(async () => {
   const res = await proxy.$api.getprofile()
-  Object.assign(form, res.data)
+  Object.assign(form, res.data) //回填函数
 })
 
 function beforeUpload(file) {

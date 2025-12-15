@@ -47,13 +47,13 @@ def time_of_day_factor() -> float:
 
 def build_appliance_set():
     return [
-        Appliance("FRIDGE", 90, 30, 0.02, duty_cycle=0.55, state=True),
-        Appliance("ROUTER", 12, 2, 0.00, state=True),
-        Appliance("LIGHTS", 80, 40, 0.05),
-        Appliance("TV", 120, 30, 0.03),
-        Appliance("AC", 900, 300, 0.02),
-        Appliance("KETTLE", 1500, 100, 0.01),
-        Appliance("WASHER", 500, 200, 0.008, duty_cycle=0.7),
+        Appliance("冰箱", 90, 30, 0.02, duty_cycle=0.55, state=True),
+        Appliance("路由器", 12, 2, 0.00, state=True),
+        Appliance("照明", 80, 40, 0.05),
+        Appliance("电视", 120, 30, 0.03),
+        Appliance("空调", 900, 300, 0.02),
+        Appliance("电水壶", 1500, 100, 0.01),
+        Appliance("洗衣机", 500, 200, 0.008, duty_cycle=0.7),
     ]
 
 

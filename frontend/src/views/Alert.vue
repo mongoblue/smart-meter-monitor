@@ -5,7 +5,7 @@ import { usePowerStore } from "@/stores/power";
 
 const store = usePowerStore();
 
-const meterList = ["METER001", "METER002", "METER003"]; // 可从后台获取
+const meterList = ["METER001", "METER002", "METER003"]; // 可从后台获取,目前用脚本模拟了这三个电表，所以这里写死了
 
 const filterType = ref("");   
 const filterMeter = ref("");
