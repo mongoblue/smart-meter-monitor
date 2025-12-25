@@ -1,17 +1,49 @@
+import os
 import time
 import calendar
 from datetime import date, datetime, timedelta
 from django.core.paginator import Paginator
 from django.db import models
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.pagination import PageNumberPagination
-from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from django.utils.timezone import now
 from .models import (Meter, DailyUsage, MonthlyUsage, ClientMeterSnapshot, HourlyUsage, RealtimeAlert)
 from .serializers import MonthlyUsageSerializer
+from system.utils import get_float_option
+from django.http import HttpResponse
+from rest_framework.views import APIView
+from io import BytesIO
+import matplotlib
+matplotlib.use('Agg')
+import os
+import matplotlib.pyplot as plt
+from matplotlib import font_manager, rcParams
+from django.conf import settings
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage, PageBreak
+)
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from .models import MonthlyUsage
+
+
+# ========== 1. 注册中文字体（仿宋） ==========
+FONT_PATH = os.path.join(
+    settings.BASE_DIR, 'static', 'fonts', 'simfang.ttf'
+)
+pdfmetrics.registerFont(TTFont('Chinese', FONT_PATH))
+
+
+# ========== 2. matplotlib 使用同一字体 ==========
+font_prop = font_manager.FontProperties(fname=FONT_PATH)
+rcParams['font.family'] = font_prop.get_name()
+rcParams['axes.unicode_minus'] = False
 
 def get_user_meter(request):
     meter_id = request.GET.get("meter_id")
@@ -40,7 +72,7 @@ def process_meter_update(meter, power_w):
         meter.save()
         return 0
 
-    # ------ ⭐ 检查是否跨天了 -------
+    # ------  检查是否跨天了 -------
     last_day = datetime.fromtimestamp(meter.last_ts).date()
     if last_day != now_day:
         process_new_day(meter, last_day)
@@ -163,10 +195,30 @@ class TrendDayView(APIView):
         x = [f"{h:02d}:00" for h in range(24)]
         y = [round(usage_map.get(h, 0), 4) for h in range(24)]
 
+        total = sum(y)
+        avg = total / 24 if total else 0
+
+        peak_kwh = max(y)
+        peak_hour = x[y.index(peak_kwh)]
+
+        valley_kwh = min(y)
+        valley_hour = x[y.index(valley_kwh)]
+
+        night_kwh = sum(y[0:6])
+        night_ratio = night_kwh / total if total else 0
+
         return Response({
             "meter_id": meter_id,
             "x": x,
-            "y": y
+            "y": y,
+            "analysis": {
+                "total_kwh": round(total, 4),
+                "avg_kwh": round(avg, 4),
+                "peak_hour": peak_hour,
+                "peak_kwh": round(peak_kwh, 4),
+                "valley_hour": valley_hour,
+                "night_ratio": round(night_ratio, 4),
+            }
         })
 
 class TrendWeekView(APIView):
@@ -202,10 +254,51 @@ class TrendWeekView(APIView):
             y.append(round(usage_map.get(curr, 0), 4))
             curr += timedelta(days=1)
 
+        total_kwh = round(sum(y), 4)
+        avg_daily_kwh = round(total_kwh / 7, 4) if total_kwh else 0
+
+        max_kwh = max(y)
+        min_kwh = min(y)
+
+        max_day = x[y.index(max_kwh)]
+        min_day = x[y.index(min_kwh)]
+
+        fluctuation = round(max_kwh - min_kwh, 4)
+
+        workday_values = []
+        weekend_values = []
+
+        curr = start_day
+        for v in y:
+            if curr.weekday() < 5:
+                workday_values.append(v)
+            else:
+                weekend_values.append(v)
+            curr += timedelta(days=1)
+
+        workday_avg = round(
+            sum(workday_values) / len(workday_values), 4
+        ) if workday_values else 0
+
+        weekend_avg = round(
+            sum(weekend_values) / len(weekend_values), 4
+        ) if weekend_values else 0
+
         return Response({
             "meter_id": meter_id,
             "x": x,
-            "y": y
+            "y": y,
+            "analysis": {
+                "total_kwh": total_kwh,
+                "avg_daily_kwh": avg_daily_kwh,
+                "max_day": max_day,
+                "max_kwh": round(max_kwh, 4),
+                "min_day": min_day,
+                "min_kwh": round(min_kwh, 4),
+                "fluctuation": fluctuation,
+                "workday_avg": workday_avg,
+                "weekend_avg": weekend_avg,
+            }
         })
 
 
@@ -245,10 +338,53 @@ class TrendMonthView(APIView):
             x.append(dt.strftime("%Y-%m-%d"))
             y.append(round(usage_map.get(d, 0), 4))
 
+        total_kwh = round(sum(y), 4)
+        avg_daily_kwh = round(
+            total_kwh / days_in_month, 4
+        ) if total_kwh else 0
+
+        max_kwh = max(y)
+        min_kwh = min(y)
+
+        max_day = x[y.index(max_kwh)]
+        min_day = x[y.index(min_kwh)]
+
+        # top 3 days
+        top3_idx = sorted(
+            range(len(y)),
+            key=lambda i: y[i],
+            reverse=True
+        )[:3]
+
+        top3_days = [
+            {"day": x[i], "kwh": round(y[i], 4)}
+            for i in top3_idx
+        ]
+
+        mid = days_in_month // 2
+        first_half_kwh = round(sum(y[:mid]), 4)
+        second_half_kwh = round(sum(y[mid:]), 4)
+
+        half_compare = round(
+            second_half_kwh - first_half_kwh, 4
+        )
+
         return Response({
             "meter_id": meter_id,
             "x": x,
-            "y": y
+            "y": y,
+            "analysis": {
+                "total_kwh": total_kwh,
+                "avg_daily_kwh": avg_daily_kwh,
+                "max_day": max_day,
+                "max_kwh": round(max_kwh, 4),
+                "min_day": min_day,
+                "min_kwh": round(min_kwh, 4),
+                "top3_days": top3_days,
+                "first_half_kwh": first_half_kwh,
+                "second_half_kwh": second_half_kwh,
+                "half_compare": half_compare,
+            }
         })
 
 
@@ -378,10 +514,6 @@ class BillView(APIView):
 
         return Response({"bills": bills})
 
-class AlertPagination(PageNumberPagination):
-    page_size = 20
-    page_size_query_param = "page_size"
-    max_page_size = 200
 
 class AlertListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -432,3 +564,142 @@ class AlertListView(APIView):
             "count": paginator.count,
             "results": results
         })
+
+
+class PowerReportExportView(APIView):
+    def get(self, request):
+        meter = request.user.meters.first()
+        months = (
+            MonthlyUsage.objects
+            .filter(meter=meter)
+            .order_by('year', 'month')[:12]
+        )
+
+        # ========= 3. 统计数据 =========
+        total_kwh = sum(m.kwh for m in months)
+        price = 0.65
+        total_money = total_kwh * price
+        avg_daily = total_kwh / 30 if total_kwh else 0
+        avg_month = total_kwh / len(months) if months else 0
+
+        # ========= 4. 生成趋势图 =========
+        labels = [f"{m.year}-{m.month:02d}" for m in months]
+        values = [m.kwh for m in months]
+
+        fig, ax = plt.subplots(figsize=(8, 4))
+
+        if len(values) < 2:
+            ax.scatter(labels, values, s=80)
+            ax.set_title("当前月用电量", fontproperties=font_prop)
+        else:
+            ax.plot(labels, values, marker='o', linewidth=2)
+            ax.set_title("最近 12 个月用电量趋势", fontproperties=font_prop)
+
+        ax.set_xlabel("月份", fontproperties=font_prop)
+        ax.set_ylabel("用电量 (kWh)", fontproperties=font_prop)
+        ax.grid(True, linestyle='--', alpha=0.6)
+        plt.xticks(rotation=45)
+
+        img_buf = BytesIO()
+        fig.savefig(img_buf, dpi=150, bbox_inches='tight')
+        img_buf.seek(0)
+        plt.close(fig)
+
+        # ========= 5. PDF 初始化 =========
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="家庭智能用电分析报告.pdf"'
+
+        doc = SimpleDocTemplate(
+            response,
+            pagesize=A4,
+            topMargin=2 * cm,
+            bottomMargin=2 * cm
+        )
+
+        styles = getSampleStyleSheet()
+        styles.add(ParagraphStyle(
+            name='TitleCN', fontName='Chinese',
+            fontSize=20, alignment=1, spaceAfter=20
+        ))
+        styles.add(ParagraphStyle(
+            name='NormalCN', fontName='Chinese',
+            fontSize=12, leading=18
+        ))
+        styles.add(ParagraphStyle(
+            name='HeadingCN', fontName='Chinese',
+            fontSize=14, spaceBefore=12, spaceAfter=8
+        ))
+
+        story = []
+
+        # ========= 6. 封面 / 标题 =========
+        story.append(Paragraph("家庭智能用电分析报告", styles['TitleCN']))
+        story.append(Spacer(1, 30))
+
+        story.append(Paragraph(
+            "本报告基于智能电表采集的历史用电数据，"
+            "对家庭用电情况进行统计分析与趋势评估，"
+            "为用户提供科学的用电决策参考。",
+            styles['NormalCN']
+        ))
+        story.append(PageBreak())
+
+        # ========= 7. 基本信息 =========
+        story.append(Paragraph("一、基本用电信息", styles['HeadingCN']))
+
+        info_table = Table([
+            ["电表编号", meter.meter_id],
+            ["统计周期", "最近 12 个月"],
+            ["总用电量", f"{total_kwh:.2f} kWh"],
+            ["总电费", f"¥{total_money:.2f}"],
+            ["日均用电量", f"{avg_daily:.2f} kWh"],
+            ["月均用电量", f"{avg_month:.2f} kWh"],
+        ], colWidths=[5 * cm, 9 * cm])
+
+        info_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Chinese'),
+            ('FONTSIZE', (0, 0), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.whitesmoke),
+        ]))
+
+        story.append(info_table)
+        story.append(Spacer(1, 20))
+
+        # ========= 8. 趋势分析 =========
+        story.append(Paragraph("二、用电趋势分析", styles['HeadingCN']))
+        story.append(RLImage(img_buf, width=15 * cm, height=8 * cm))
+        story.append(Spacer(1, 12))
+
+        story.append(Paragraph(
+            "从用电趋势图可以看出，家庭整体用电情况较为稳定，"
+            "未出现明显的异常峰值，说明家庭用电行为相对规律。",
+            styles['NormalCN']
+        ))
+
+        # ========= 9. 节能建议 =========
+        story.append(Spacer(1, 20))
+        story.append(Paragraph("三、节能建议", styles['HeadingCN']))
+
+        tips = [
+            "合理安排大功率电器的使用时间，避免集中使用。",
+            "选用高能效等级家用电器以降低长期用电成本。",
+            "夏季空调温度建议不低于 26℃，冬季不高于 20℃。",
+            "外出或长期不用时，及时关闭待机电器。"
+        ]
+
+        for tip in tips:
+            story.append(Paragraph(f"• {tip}", styles['NormalCN']))
+            story.append(Spacer(1, 6))
+
+        # ========= 10. 系统说明 =========
+        story.append(Spacer(1, 20))
+        story.append(Paragraph("四、系统说明", styles['HeadingCN']))
+        story.append(Paragraph(
+            "本分析报告由家庭智能用电监测系统自动生成，"
+            "可辅助用户了解用电行为并优化用电策略。",
+            styles['NormalCN']
+        ))
+
+        doc.build(story)
+        return response

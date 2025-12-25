@@ -25,7 +25,7 @@ def make_group_name(meter_id):
 
 def process_meter_update(meter, power_w):
     """根据实时功率计算增量电量（kWh）"""
-    from power.models import DailyUsage, MonthlyUsage  # 必须放函数内部！
+    from power.models import DailyUsage, MonthlyUsage
 
     now_ts = time.time()
     today = date.today()

@@ -1,8 +1,9 @@
 <script setup>
 import * as echarts from "echarts";
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { ref, watch, onMounted, onBeforeUnmount, nextTick,computed } from "vue";
 import service from "../api/request";
 import { usePowerStore } from "../stores/power";
+
 
 const powerStore = usePowerStore();
 
@@ -18,6 +19,24 @@ const monthPick = ref("");
 
 const chartEl = ref(null);
 let chart = null;
+
+const analysis = ref({
+  total_kwh: 0,
+  avg_daily_kwh: 0,
+  max_day: "",
+  max_kwh: 0,
+  min_day: "",
+  min_kwh: 0,
+  night_ratio: 0,
+  peak_hour: "",
+  workday_avg: 0,
+  weekend_avg: 0,
+  top3_days: [],
+  first_half_kwh: 0,
+  second_half_kwh: 0,
+  half_compare: 0,
+})
+
 
 function initChart() {
   chart = echarts.init(chartEl.value);
@@ -54,9 +73,9 @@ function setTrendData(x, y) {
   });
 }
 
-
 async function loadTrend() {
   trendLoading.value = true;
+  analysis.value = {};
 
   try {
     let url = "";
@@ -75,20 +94,24 @@ async function loadTrend() {
         params.year = Number(yy);
         params.month = Number(mm);
       }
+
     }
 
     const resp = await service.get(url, { params });
 
-    const x = resp?.x ?? [];
-    const y = resp?.y ?? [];
+    const x = resp.x;
+    const y = resp.y;
 
     setTrendData(x, y);
-
+    analysis.value = resp.analysis
+    console.log(analysis.value);
+    
     // ⭐ 存进 Pinia 用于缓存
     powerStore.saveTrend(trendTab.value, {
       meter_id: meterId.value,
       x,
       y,
+      analysis: resp.analysis,
       fetchedAt: Date.now(),
     });
 
@@ -99,6 +122,18 @@ async function loadTrend() {
     trendLoading.value = false;
   }
 }
+
+const conclusion = computed(() => {
+    if (!analysis.value.total_kwh) return ""
+
+    if (analysis.value.night_ratio > 0.4) {
+      return "夜间用电占比较高，可能存在夜间设备未关闭情况"
+    }
+    if (analysis.value.peak_kwh > analysis.value.avg_kwh * 2) {
+      return "存在明显用电峰值，建议错峰用电"
+    }
+    return "用电整体较为平稳"
+  })
 
 function tryRestore() {
   const map = {
@@ -113,6 +148,7 @@ function tryRestore() {
   if (snap.meter_id !== meterId.value) return false;
 
   setTrendData(snap.x, snap.y);
+  analysis.value = snap.analysis;
   return true;
 }
 
@@ -166,7 +202,6 @@ onBeforeUnmount(() => {
 
       <div class="controls">
         <span>Meter：</span>
-
         <el-select v-model="meterId" size="small" style="width:160px">
           <el-option v-for="m in meterOptions" :key="m" :label="m" :value="m" />
         </el-select>
@@ -221,9 +256,95 @@ onBeforeUnmount(() => {
     </div>
 
     <div ref="chartEl" class="trend-chart"></div>
+
+    <!-- 用电分析模块 -->
+    <div class="analysis-panel" v-if="Object.keys(analysis).length > 0">
+      <el-card>
+        <div class="analysis-title">用电分析</div>
+
+        <el-row :gutter="16">
+          <el-col :span="6">
+            <div class="metric">
+              <div class="label">总用电量</div>
+              <div class="value">{{ analysis.total_kwh }} kWh</div>
+            </div>
+          </el-col>
+
+          <el-col :span="6">
+            <div class="metric">
+              <div class="label">峰值时段</div>
+              <div class="value">{{ analysis.peak_hour || '--' }}</div>
+            </div>
+          </el-col>
+
+          <el-col :span="6">
+            <div class="metric">
+              <div class="label">峰值用电</div>
+              <div class="value">{{ analysis.peak_kwh }} kWh</div>
+            </div>
+          </el-col>
+
+          <el-col :span="6">
+            <div class="metric">
+              <div class="label">夜间占比</div>
+              <div class="value">{{ (analysis.night_ratio * 100).toFixed(1) }} %</div>
+            </div>
+          </el-col>
+        </el-row>
+
+        <!-- 周期特定分析 -->
+        <template v-if="trendTab === 'week'">
+          <el-row :gutter="16">
+            <el-col :span="6">
+              <div class="metric">
+                <div class="label">工作日平均</div>
+                <div class="value">{{ analysis.workday_avg }} kWh</div>
+              </div>
+            </el-col>
+            <el-col :span="6">
+              <div class="metric">
+                <div class="label">周末平均</div>
+                <div class="value">{{ analysis.weekend_avg }} kWh</div>
+              </div>
+            </el-col>
+          </el-row>
+        </template>
+
+        <template v-if="trendTab === 'month'">
+          <el-row :gutter="16">
+            <el-col :span="6">
+              <div class="metric">
+                <div class="label">最高用电日</div>
+                <div class="value">{{ analysis.max_day }}</div>
+              </div>
+            </el-col>
+            <el-col :span="6">
+              <div class="metric">
+                <div class="label">上半月总用电</div>
+                <div class="value">{{ analysis.first_half_kwh }} kWh</div>
+              </div>
+            </el-col>
+            <el-col :span="6">
+              <div class="metric">
+                <div class="label">下半月总用电</div>
+                <div class="value">{{ analysis.second_half_kwh }} kWh</div>
+              </div>
+            </el-col>
+          </el-row>
+        </template>
+      </el-card>
+    </div>
+
+    <!-- 用电结论 -->
+    <div class="conclusion-panel" v-if="conclusion">
+      <el-card>
+        <div class="analysis-title">用电结论</div>
+        <div class="value">{{ conclusion }}</div>
+      </el-card>
+    </div>
+
   </div>
 </template>
-
 
 <style scoped>
 .trend-page {

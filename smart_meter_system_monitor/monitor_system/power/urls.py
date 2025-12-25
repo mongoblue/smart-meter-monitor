@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import TrendDayView, TrendMonthView, SaveClientDataView, TodayUsageView, UserUsageView, TrendWeekView, \
-    PowerDetailView, BillView, AlertListView
+    PowerDetailView, BillView, AlertListView, PowerReportExportView
 
 urlpatterns = [
     path("usage/lastest-month", UserUsageView.as_view(), name="user-usage"),
@@ -12,4 +12,5 @@ urlpatterns = [
     path("detail/", PowerDetailView.as_view()),
     path("bill/", BillView.as_view()),
     path("alerts/", AlertListView.as_view()),
+    path("report/export/", PowerReportExportView.as_view()),
 ]

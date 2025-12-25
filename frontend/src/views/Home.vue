@@ -2,6 +2,7 @@
 import { ref, reactive, onMounted, onBeforeUnmount,getCurrentInstance } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
+import service from '../api/request'
 
 const {proxy} = getCurrentInstance()
 const totalKwh   = ref(0)
@@ -126,7 +127,25 @@ onBeforeUnmount(() => {
   pieChart?.dispose()
 })
 
-function exportData() { ElMessage.success('导出功能开发中') }
+const exportData = async () => {
+  try {
+    const blob = await service.get('power/report/export/', {
+      responseType: 'blob',
+    })
+
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '用电分析报告.pdf'
+    a.click()
+    URL.revokeObjectURL(url)
+
+    ElMessage.success('报告导出成功')
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('报告导出失败')
+  }
+}
 </script>
 
 <template>
@@ -156,7 +175,7 @@ function exportData() { ElMessage.success('导出功能开发中') }
       </div>
     </el-col>
     <el-col :span="6">
-      <el-button type="primary" @click="exportData">导出数据</el-button>
+      <el-button type="primary" @click="exportData">导出用电报告</el-button>
     </el-col>
   </el-row>
 
